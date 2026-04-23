@@ -350,6 +350,58 @@ async def fx_daily(ticker: str, start: str, end: str):
         raise HTTPException(status_code=_error_status(e), detail=_error_detail(e))
 
 
+@app.get("/fx/intraday")
+async def fx_intraday(ticker: str, interval: str, start: str, end: str):
+    """
+    Fetch intraday FX bars from yfinance.
+
+    ticker: yfinance FX ticker, e.g. 'USDJPY=X'
+    interval: '1h' (only supported value)
+    start, end: 'YYYY-MM-DD'
+    """
+    if interval != "1h":
+        raise HTTPException(status_code=400, detail=f"Unsupported interval: {interval}")
+
+    try:
+        def _fetch(session: CurlSession):
+            t = yf.Ticker(ticker, session=session)
+            df = t.history(start=start, end=end, interval="1h", auto_adjust=False)
+            return df
+
+        df = await throttled_with_retry(_fetch)
+
+        if df is None or df.empty:
+            return {"ticker": ticker, "interval": interval, "bars": []}
+
+        _flatten_columns(df)
+        bars = []
+        for ts, row in df.iterrows():
+            o = safe_float_or_none(row.get("Open"))
+            h = safe_float_or_none(row.get("High"))
+            l = safe_float_or_none(row.get("Low"))
+            c = safe_float_or_none(row.get("Close"))
+            if o is None or h is None or l is None or c is None:
+                continue
+            # ts is pandas Timestamp; convert to ISO UTC
+            if hasattr(ts, "tz_convert"):
+                ts_utc = ts.tz_convert("UTC") if ts.tzinfo else ts.tz_localize("UTC")
+            else:
+                ts_utc = ts
+            dt_iso = ts_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if hasattr(ts_utc, "strftime") else str(ts_utc)
+            bars.append({
+                "datetime": dt_iso,
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": safe_float_or_none(row.get("Volume")),
+            })
+        return {"ticker": ticker, "interval": interval, "bars": bars}
+    except Exception as e:
+        logger.error(f"Failed to fetch intraday for {ticker}: {e}")
+        raise HTTPException(status_code=_error_status(e), detail=_error_detail(e))
+
+
 # ========================================
 # エントリーポイント
 # ========================================
