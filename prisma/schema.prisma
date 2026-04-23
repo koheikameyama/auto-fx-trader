@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Pair {
+  id             String     @id @default(cuid())
+  symbol         String     @unique
+  yfinanceTicker String     @unique
+  pipValueJpy    Float
+  spreadPips     Float
+  buySwapJpy     Float
+  sellSwapJpy    Float
+  dailyBars      DailyBar[]
+  trades         Trade[]
+}
+
+model DailyBar {
+  id     String   @id @default(cuid())
+  pairId String
+  pair   Pair     @relation(fields: [pairId], references: [id])
+  date   DateTime
+  open   Float
+  high   Float
+  low    Float
+  close  Float
+  volume Float?
+
+  @@unique([pairId, date])
+  @@index([pairId, date])
+}
+
+model BacktestRun {
+  id             String   @id @default(cuid())
+  strategy       String
+  pairSymbol     String?
+  startDate      DateTime
+  endDate        DateTime
+  initialCapital Float
+  params         Json
+  totalReturn    Float
+  sharpe         Float
+  mar            Float
+  profitFactor   Float
+  maxDrawdown    Float
+  winRate        Float
+  tradeCount     Int
+  expectancy     Float
+  createdAt      DateTime @default(now())
+  trades         Trade[]
+  reportPath     String?
+
+  @@index([strategy, pairSymbol, createdAt])
+}
+
+model WalkForwardRun {
+  id              String   @id @default(cuid())
+  strategy        String
+  pairSymbol      String
+  startDate       DateTime
+  endDate         DateTime
+  isMonths        Int
+  oosMonths       Int
+  stepMonths      Float
+  oosAvgSharpe    Float
+  oosAvgMar       Float
+  oosAvgPf        Float
+  oosMaxDd        Float
+  isOosSharpeDrop Float
+  passed          Boolean
+  windows         Json
+  createdAt       DateTime @default(now())
+  reportPath      String?
+
+  @@index([strategy, pairSymbol, createdAt])
+}
+
+model Trade {
+  id            String      @id @default(cuid())
+  backtestRunId String
+  backtestRun   BacktestRun @relation(fields: [backtestRunId], references: [id])
+  pairId        String
+  pair          Pair        @relation(fields: [pairId], references: [id])
+  strategy      String
+  side          String
+  entryDate     DateTime
+  entryPrice    Float
+  exitDate      DateTime?
+  exitPrice     Float?
+  exitReason    String?
+  sizeUnits     Float
+  pnlPips       Float?
+  pnlJpy        Float?
+  holdingDays   Int?
+
+  @@index([backtestRunId])
+  @@index([pairId, entryDate])
+}
