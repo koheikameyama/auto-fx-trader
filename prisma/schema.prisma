@@ -16,6 +16,7 @@ model Pair {
   buySwapJpy     Float
   sellSwapJpy    Float
   dailyBars      DailyBar[]
+  intradayBars   IntradayBar[]
   trades         Trade[]
 }
 
@@ -99,4 +100,20 @@ model Trade {
 
   @@index([backtestRunId])
   @@index([pairId, entryDate])
+}
+
+model IntradayBar {
+  id        String   @id @default(cuid())
+  pairId    String
+  pair      Pair     @relation(fields: [pairId], references: [id])
+  datetime  DateTime
+  timeframe String   // "1h" | "4h"
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float?
+
+  @@unique([pairId, datetime, timeframe])
+  @@index([pairId, timeframe, datetime])
 }
