@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { fetchFxDaily } from "../price-loader.js";
+import { fetchFxDaily, fetchFxIntraday } from "../price-loader.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -115,5 +115,59 @@ describe("fetchFxDaily", () => {
     const init = callArgs?.[1] as RequestInit | undefined;
     const headers = (init?.headers ?? {}) as Record<string, string>;
     expect(headers["x-api-key"]).toBeUndefined();
+  });
+});
+
+describe("fetchFxIntraday", () => {
+  it("parses intraday response into IntradayBar[] with timeframe='1h'", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ticker: "USDJPY=X",
+        interval: "1h",
+        bars: [
+          { datetime: "2024-06-03T00:00:00Z", open: 155.0, high: 155.2, low: 154.9, close: 155.1, volume: 0 },
+          { datetime: "2024-06-03T01:00:00Z", open: 155.1, high: 155.3, low: 155.0, close: 155.25, volume: null },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const bars = await fetchFxIntraday("USDJPY", "1h", "2024-06-01", "2024-06-10");
+
+    expect(bars.length).toBe(2);
+    expect(bars[0].datetime).toBeInstanceOf(Date);
+    expect(bars[0].datetime.toISOString()).toBe("2024-06-03T00:00:00.000Z");
+    expect(bars[0].timeframe).toBe("1h");
+    expect(bars[0].close).toBe(155.1);
+    expect(bars[0].volume).toBe(0);
+    expect(bars[1].volume).toBeNull();
+  });
+
+  it("URL contains interval and date params", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ticker: "USDJPY=X", interval: "1h", bars: [] }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchFxIntraday("USDJPY", "1h", "2024-06-01", "2024-06-10");
+
+    const calledUrl = (fetchMock.mock.calls[0]?.[0] ?? "") as string;
+    expect(calledUrl).toContain("ticker=USDJPY%3DX");
+    expect(calledUrl).toContain("interval=1h");
+    expect(calledUrl).toContain("start=2024-06-01");
+    expect(calledUrl).toContain("end=2024-06-10");
+  });
+
+  it("throws when service returns non-ok", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => "Unsupported interval",
+    }) as unknown as typeof fetch;
+
+    await expect(fetchFxIntraday("USDJPY", "1h", "2024-06-01", "2024-06-10")).rejects.toThrow(/400/);
   });
 });
