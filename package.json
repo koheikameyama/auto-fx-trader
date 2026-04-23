@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.0.0", "npm": ">=10.0.0" },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "backfill:prices": "tsx scripts/backfill-fx-prices.ts",
     "backtest:donchian": "tsx src/backtest/donchian-run.ts",
@@ -27,15 +30,17 @@
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "dayjs": "^1.11.13",
-    "technicalindicators": "^3.1.0",
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "technicalindicators": "^3.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^22.9.0",
     "eslint": "^9.13.0",
     "prisma": "^5.22.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "typescript-eslint": "^8.59.0",
     "vitest": "^2.1.0"
   }
 }
