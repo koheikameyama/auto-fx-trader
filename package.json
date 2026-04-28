@@ -19,6 +19,7 @@
     "walk-forward:ma-crossover": "tsx scripts/walk-forward-ma-crossover.ts",
     "walk-forward:rsi-reversion": "tsx scripts/walk-forward-rsi-reversion.ts",
     "walk-forward:nr7": "tsx scripts/walk-forward-nr7.ts",
+    "experiment:orb-1h": "tsx scripts/experiment-usdjpy-1h-orb.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
