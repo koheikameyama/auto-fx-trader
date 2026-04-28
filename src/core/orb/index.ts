@@ -15,7 +15,7 @@ export const orbStrategy: Strategy<OrbParams> = {
     useTrailing: false,
     timeStopDays: 999,
     timeStopMaxDays: 999,
-    slAtrMultiplier: 2.5,
+    slAtrMultiplier: 1.5,
     beAtrMultiplier: 999,
     trailAtrMultiplier: 0,
     sessionEndUtcHour: 15,
