@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   sharpeRatio,
+  sortinoRatio,
   maxDrawdown,
   profitFactor,
   expectancy,
@@ -24,6 +25,38 @@ describe("sharpeRatio", () => {
     const daily = sharpeRatio([0.01, -0.005, 0.02, 0.003, -0.01], 252);
     const weekly = sharpeRatio([0.01, -0.005, 0.02, 0.003, -0.01], 52);
     // Higher frequency = higher annualization factor
+    expect(Math.abs(daily)).toBeGreaterThan(Math.abs(weekly));
+  });
+});
+
+describe("sortinoRatio", () => {
+  it("returns 0 for empty returns", () => {
+    expect(sortinoRatio([])).toBe(0);
+  });
+  it("returns 0 when there are no losses (Sortino is not meaningful with zero downside observations)", () => {
+    // No negative returns -> downside deviation undefined / inflated.
+    // We deliberately return 0 to flag the result as not meaningful.
+    expect(sortinoRatio([0.01, 0.02, 0.03])).toBe(0);
+    expect(sortinoRatio([0.01, 0, 0.02])).toBe(0);
+  });
+  it("returns a positive value for mixed returns and is less penalized than Sharpe (upside variance excluded)", () => {
+    const returns = [0.01, 0.02, -0.01, 0.015, 0.005, -0.005];
+    const sortino = sortinoRatio(returns);
+    const sharpe = sharpeRatio(returns);
+    expect(sortino).toBeGreaterThan(0);
+    // Sortino only penalizes downside, so for a mostly-positive series it
+    // should exceed Sharpe.
+    expect(sortino).toBeGreaterThan(sharpe);
+  });
+  it("returns a negative value when mean return is negative (loss-heavy series)", () => {
+    const returns = [-0.02, -0.01, -0.03, 0.005];
+    const sortino = sortinoRatio(returns);
+    expect(sortino).toBeLessThan(0);
+  });
+  it("annualizes with given tradingDays factor", () => {
+    const ret = [0.01, -0.005, 0.02, 0.003, -0.01];
+    const daily = sortinoRatio(ret, 252);
+    const weekly = sortinoRatio(ret, 52);
     expect(Math.abs(daily)).toBeGreaterThan(Math.abs(weekly));
   });
 });

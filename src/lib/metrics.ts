@@ -10,6 +10,41 @@ export function sharpeRatio(returns: number[], tradingDays = TRADING_DAYS): numb
   return (mean / std) * Math.sqrt(tradingDays);
 }
 
+/**
+ * Sortino ratio: like Sharpe, but only penalizes downside deviation
+ * (returns below the MAR threshold; here MAR = 0).
+ *
+ * Formula (Sortino & Price 1994, industry-standard):
+ *   downsideDeviation = sqrt( sum(min(r, 0)^2) / n )   // n = total returns
+ *   sortino = (mean(returns) / downsideDeviation) * sqrt(annualizationFactor)
+ *
+ * Sparse-data safeguard:
+ *   - empty returns -> 0
+ *   - no losses     -> 0 (Sortino with no downside observations is undefined /
+ *                         degenerately inflated; flagging as 0 is the safe call)
+ *   - tiny downside (< 1e-8) -> 0 (avoids Infinity / numerical blow-up)
+ */
+export function sortinoRatio(
+  returns: number[],
+  tradingDays = TRADING_DAYS,
+): number {
+  if (returns.length === 0) return 0;
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const downsideReturns = returns.filter((r) => r < 0);
+  if (downsideReturns.length === 0) {
+    // No losses observed: Sortino undefined / inflated. Return 0 to flag
+    // "not meaningful" — a real Sortino requires some loss observations.
+    return 0;
+  }
+  // Sum of squared downside deviations divided by TOTAL n (not just losses).
+  // This matches the Sortino & Price (1994) convention.
+  const downsideVariance =
+    downsideReturns.reduce((a, b) => a + b ** 2, 0) / returns.length;
+  const downsideStd = Math.sqrt(downsideVariance);
+  if (downsideStd < 1e-8) return 0;
+  return (mean / downsideStd) * Math.sqrt(tradingDays);
+}
+
 export function maxDrawdown(equityCurve: number[]): number {
   if (equityCurve.length <= 1) return 0;
   let peak = -Infinity;

@@ -4,7 +4,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { orbStrategy } from "../src/core/orb/index.js";
 import { runWalkForward } from "../src/walk-forward/engine.js";
-import { checkRobustness, type RobustnessCriteria } from "../src/walk-forward/robustness.js";
+import {
+  checkRobustness,
+  checkSortinoRobustness,
+  sortinoDefaultRobustness,
+  type RobustnessCriteria,
+  type SortinoRobustnessCriteria,
+} from "../src/walk-forward/robustness.js";
 import type { DailyBar } from "../src/types/bar.js";
 import type { Strategy } from "../src/types/strategy.js";
 
@@ -13,13 +19,17 @@ const prisma = new PrismaClient();
 const EXPERIMENT_ID = "orb-1h-usdjpy";
 const PAIR_SYMBOL = "USDJPY";
 
-const criteria: RobustnessCriteria = {
+// Old (Sharpe-based) criteria — kept for reference / transparency in the report
+const oldCriteria: RobustnessCriteria = {
   minSharpe: 0.5,
   minMar: 0.3,
   minPf: 1.2,
   maxDd: 0.15,
   maxSharpeDrop: 0.5,
 };
+
+// New (Sortino-based) criteria — primary verdict source
+const newCriteria: SortinoRobustnessCriteria = sortinoDefaultRobustness;
 
 async function loadIntraday1hBars(): Promise<DailyBar[]> {
   const pair = await prisma.pair.findUnique({ where: { symbol: PAIR_SYMBOL } });
@@ -87,42 +97,75 @@ async function main() {
     riskRatio: 0.01,
   });
 
-  // Aggregate extra metrics for design's PASS criteria
+  // Per-window winning-window statistics for both Sharpe and Sortino
   const oosSharpes = result.windows.map((w) => w.oosSharpe);
-  const winningWindows = oosSharpes.filter((s) => s > 0).length;
-  const winRate = oosSharpes.length > 0 ? winningWindows / oosSharpes.length : 0;
-  const mean = oosSharpes.reduce((s, v) => s + v, 0) / Math.max(oosSharpes.length, 1);
-  const variance =
-    oosSharpes.reduce((s, v) => s + (v - mean) ** 2, 0) / Math.max(oosSharpes.length, 1);
-  const stdev = Math.sqrt(variance);
+  const oosSortinos = result.windows.map((w) => w.oosSortino);
+  const winningSharpeWindows = oosSharpes.filter((s) => s > 0).length;
+  const winningSortinoWindows = oosSortinos.filter((s) => s > 0).length;
+  const sharpeWinRate =
+    oosSharpes.length > 0 ? winningSharpeWindows / oosSharpes.length : 0;
+  const sortinoWinRate =
+    oosSortinos.length > 0 ? winningSortinoWindows / oosSortinos.length : 0;
+
+  // Sharpe stdev (kept for backward-compat reporting)
+  const sharpeMean =
+    oosSharpes.reduce((s, v) => s + v, 0) / Math.max(oosSharpes.length, 1);
+  const sharpeVariance =
+    oosSharpes.reduce((s, v) => s + (v - sharpeMean) ** 2, 0) /
+    Math.max(oosSharpes.length, 1);
+  const sharpeStdev = Math.sqrt(sharpeVariance);
 
   console.log(`\nWindows: ${result.windows.length}`);
+  console.log(`--- Sharpe (reference) ---`);
   console.log(`OOS avg Sharpe: ${result.oosAvgSharpe.toFixed(3)}`);
-  console.log(`OOS Sharpe stdev: ${stdev.toFixed(3)}`);
+  console.log(`OOS Sharpe stdev: ${sharpeStdev.toFixed(3)}`);
   console.log(
-    `OOS winning windows: ${winningWindows}/${oosSharpes.length} (${(winRate * 100).toFixed(1)}%)`,
+    `OOS Sharpe winning windows: ${winningSharpeWindows}/${oosSharpes.length} (${(sharpeWinRate * 100).toFixed(1)}%)`,
   );
+  console.log(`IS->OOS Sharpe drop: ${(result.isOosSharpeDrop * 100).toFixed(2)}%`);
+  console.log(`--- Sortino (PRIMARY KPI) ---`);
+  console.log(`OOS avg Sortino: ${result.oosAvgSortino.toFixed(3)}`);
+  console.log(`OOS Sortino stdev: ${result.oosSortinoStdev.toFixed(3)}`);
+  console.log(
+    `OOS Sortino winning windows: ${winningSortinoWindows}/${oosSortinos.length} (${(sortinoWinRate * 100).toFixed(1)}%)`,
+  );
+  console.log(`IS->OOS Sortino drop: ${(result.isOosSortinoDrop * 100).toFixed(2)}%`);
+  console.log(`--- Other ---`);
   console.log(`OOS avg MAR: ${result.oosAvgMar.toFixed(3)}`);
   console.log(`OOS avg PF: ${result.oosAvgPf.toFixed(3)}`);
   console.log(`OOS max DD: ${(result.oosMaxDd * 100).toFixed(2)}%`);
-  console.log(`IS->OOS Sharpe drop: ${(result.isOosSharpeDrop * 100).toFixed(2)}%`);
 
-  const check = checkRobustness(result, criteria);
+  console.log(`\n--- Per-window OOS Sortino ---`);
+  for (const w of result.windows) {
+    console.log(
+      `  W${w.windowIndex}: rangeHours=${(w.bestParams as { rangeHours: number }).rangeHours} | IS Sortino=${w.isSortino.toFixed(2)} | OOS Sortino=${w.oosSortino.toFixed(2)} | OOS Sharpe=${w.oosSharpe.toFixed(2)} | Trades=${w.oosTrades}`,
+    );
+  }
 
-  // Apply 4-bucket verdict from design
-  const sharpePass = result.oosAvgSharpe >= 0.5;
-  const dropPass = result.isOosSharpeDrop <= 0.5;
-  let verdict: "PASS" | "PARTIAL_DROP" | "PARTIAL_SHARPE" | "FAIL";
-  if (sharpePass && dropPass) verdict = "PASS";
-  else if (sharpePass && !dropPass) verdict = "PARTIAL_DROP";
-  else if (!sharpePass && dropPass) verdict = "PARTIAL_SHARPE";
-  else verdict = "FAIL";
+  // Verdict — new (Sortino-based) primary, old (Sharpe-based) for reference
+  const sortinoCheck = checkSortinoRobustness(result, newCriteria);
+  const oldSharpeCheck = checkRobustness(result, oldCriteria);
+  // Old 4-bucket verdict (kept for transparency)
+  const oldSharpePass = result.oosAvgSharpe >= oldCriteria.minSharpe;
+  const oldDropPass = result.isOosSharpeDrop <= oldCriteria.maxSharpeDrop;
+  let oldVerdict: "PASS" | "PARTIAL_DROP" | "PARTIAL_SHARPE" | "FAIL";
+  if (oldSharpePass && oldDropPass) oldVerdict = "PASS";
+  else if (oldSharpePass && !oldDropPass) oldVerdict = "PARTIAL_DROP";
+  else if (!oldSharpePass && oldDropPass) oldVerdict = "PARTIAL_SHARPE";
+  else oldVerdict = "FAIL";
+
+  const verdict: "PASS" | "FAIL" = sortinoCheck.passed ? "PASS" : "FAIL";
 
   console.log(`\n========================================`);
-  console.log(`Verdict: ${verdict}`);
-  if (!check.passed) {
-    console.log(`Robustness check failures:`);
-    for (const r of check.reasons) console.log(`  - ${r}`);
+  console.log(`Verdict (NEW Sortino-based): ${verdict}`);
+  if (!sortinoCheck.passed) {
+    console.log(`Sortino-based robustness failures:`);
+    for (const r of sortinoCheck.reasons) console.log(`  - ${r}`);
+  }
+  console.log(`Verdict (OLD Sharpe-based, reference): ${oldVerdict}`);
+  if (!oldSharpeCheck.passed) {
+    console.log(`Old-criteria failures (reference):`);
+    for (const r of oldSharpeCheck.reasons) console.log(`  - ${r}`);
   }
   console.log(`========================================`);
 
@@ -150,6 +193,8 @@ async function main() {
         bestParams: w.bestParams,
         isSharpe: clampForDb(w.isSharpe),
         oosSharpe: clampForDb(w.oosSharpe),
+        isSortino: clampForDb(w.isSortino),
+        oosSortino: clampForDb(w.oosSortino),
         oosMar: clampForDb(w.oosMar),
         oosPf: clampForDb(w.oosPf),
         oosMaxDd: clampForDb(w.oosMaxDd),
@@ -163,6 +208,7 @@ async function main() {
   await fs.mkdir(reportDir, { recursive: true });
   const ts = dayjs().format("YYYYMMDD-HHmmss");
   const reportPath = path.join(reportDir, `${EXPERIMENT_ID}-${ts}.md`);
+
   const lines: string[] = [
     `# Minimum Experiment: ${EXPERIMENT_ID}`,
     ``,
@@ -174,30 +220,51 @@ async function main() {
     `**Period:** ${dayjs(bars[0].date).format("YYYY-MM-DD")} - ${dayjs(bars[bars.length - 1].date).format("YYYY-MM-DD")}`,
     `**Windows:** ${result.windows.length}`,
     ``,
-    `## Verdict: ${verdict}`,
+    `## Verdict (NEW Sortino-based, primary): ${verdict}`,
     ``,
-    `## Aggregate OOS KPIs`,
+    `## Verdict (OLD Sharpe-based, reference): ${oldVerdict}`,
+    ``,
+    `## Aggregate OOS KPIs — Sortino-based criteria (NEW PRIMARY)`,
     ``,
     `| Metric | Value | Target | Pass |`,
     `|---|---:|---:|:---:|`,
-    `| OOS Avg Sharpe | ${result.oosAvgSharpe.toFixed(3)} | >= 0.5 | ${sharpePass ? "PASS" : "FAIL"} |`,
-    `| IS->OOS Sharpe Drop | ${(result.isOosSharpeDrop * 100).toFixed(2)}% | <= 50% | ${dropPass ? "PASS" : "FAIL"} |`,
-    `| OOS Sharpe Stdev | ${stdev.toFixed(3)} | <= 1.0 | ${stdev <= 1.0 ? "PASS" : "FAIL"} |`,
-    `| OOS Winning Windows | ${winningWindows}/${oosSharpes.length} (${(winRate * 100).toFixed(1)}%) | >= 60% | ${winRate >= 0.6 ? "PASS" : "FAIL"} |`,
-    `| OOS Avg MAR | ${result.oosAvgMar.toFixed(3)} | >= 0.3 | ${result.oosAvgMar >= 0.3 ? "PASS" : "FAIL"} |`,
-    `| OOS Avg PF | ${result.oosAvgPf.toFixed(3)} | >= 1.2 | ${result.oosAvgPf >= 1.2 ? "PASS" : "FAIL"} |`,
-    `| OOS Max DD | ${(result.oosMaxDd * 100).toFixed(2)}% | <= 15% | ${result.oosMaxDd <= 0.15 ? "PASS" : "FAIL"} |`,
+    `| OOS Avg Sortino | ${result.oosAvgSortino.toFixed(3)} | >= ${newCriteria.minSortino} | ${result.oosAvgSortino >= newCriteria.minSortino ? "PASS" : "FAIL"} |`,
+    `| IS->OOS Sortino Drop | ${(result.isOosSortinoDrop * 100).toFixed(2)}% | <= ${(newCriteria.maxSortinoDrop * 100).toFixed(0)}% | ${result.isOosSortinoDrop <= newCriteria.maxSortinoDrop ? "PASS" : "FAIL"} |`,
+    `| OOS Sortino Stdev | ${result.oosSortinoStdev.toFixed(3)} | <= ${newCriteria.maxSortinoStdev} | ${result.oosSortinoStdev <= newCriteria.maxSortinoStdev ? "PASS" : "FAIL"} |`,
+    `| OOS Sortino Winning Windows | ${winningSortinoWindows}/${oosSortinos.length} (${(sortinoWinRate * 100).toFixed(1)}%) | >= ${(newCriteria.minWinningWindowRate * 100).toFixed(0)}% | ${sortinoWinRate >= newCriteria.minWinningWindowRate ? "PASS" : "FAIL"} |`,
+    `| OOS Avg MAR | ${result.oosAvgMar.toFixed(3)} | >= ${newCriteria.minMar} | ${result.oosAvgMar >= newCriteria.minMar ? "PASS" : "FAIL"} |`,
+    `| OOS Avg PF | ${result.oosAvgPf.toFixed(3)} | >= ${newCriteria.minPf} | ${result.oosAvgPf >= newCriteria.minPf ? "PASS" : "FAIL"} |`,
+    `| OOS Max DD | ${(result.oosMaxDd * 100).toFixed(2)}% | <= ${(newCriteria.maxDd * 100).toFixed(0)}% | ${result.oosMaxDd <= newCriteria.maxDd ? "PASS" : "FAIL"} |`,
     ``,
-    `## Best rangeHours Per Window`,
+    `## Aggregate OOS KPIs — Sharpe-based criteria (OLD, reference only)`,
     ``,
-    `| Window | IS Period | OOS Period | rangeHours | IS Sharpe | OOS Sharpe | OOS Trades |`,
-    `|---|---|---|---|---|---|---|`,
+    `| Metric | Value | Target | Pass |`,
+    `|---|---:|---:|:---:|`,
+    `| OOS Avg Sharpe | ${result.oosAvgSharpe.toFixed(3)} | >= ${oldCriteria.minSharpe} | ${oldSharpePass ? "PASS" : "FAIL"} |`,
+    `| IS->OOS Sharpe Drop | ${(result.isOosSharpeDrop * 100).toFixed(2)}% | <= ${(oldCriteria.maxSharpeDrop * 100).toFixed(0)}% | ${oldDropPass ? "PASS" : "FAIL"} |`,
+    `| OOS Sharpe Stdev | ${sharpeStdev.toFixed(3)} | <= 1.0 | ${sharpeStdev <= 1.0 ? "PASS" : "FAIL"} |`,
+    `| OOS Sharpe Winning Windows | ${winningSharpeWindows}/${oosSharpes.length} (${(sharpeWinRate * 100).toFixed(1)}%) | >= 60% | ${sharpeWinRate >= 0.6 ? "PASS" : "FAIL"} |`,
+    ``,
+    `## Per-Window Results`,
+    ``,
+    `| Window | IS Period | OOS Period | rangeHours | IS Sharpe | OOS Sharpe | IS Sortino | OOS Sortino | OOS Trades |`,
+    `|---|---|---|---|---:|---:|---:|---:|---:|`,
   ];
   for (const w of result.windows) {
     lines.push(
-      `| ${w.windowIndex} | ${dayjs(w.isStart).format("YY-MM-DD")}->${dayjs(w.isEnd).format("YY-MM-DD")} | ${dayjs(w.oosStart).format("YY-MM-DD")}->${dayjs(w.oosEnd).format("YY-MM-DD")} | ${(w.bestParams as { rangeHours: number }).rangeHours} | ${w.isSharpe.toFixed(2)} | ${w.oosSharpe.toFixed(2)} | ${w.oosTrades} |`,
+      `| ${w.windowIndex} | ${dayjs(w.isStart).format("YY-MM-DD")}->${dayjs(w.isEnd).format("YY-MM-DD")} | ${dayjs(w.oosStart).format("YY-MM-DD")}->${dayjs(w.oosEnd).format("YY-MM-DD")} | ${(w.bestParams as { rangeHours: number }).rangeHours} | ${w.isSharpe.toFixed(2)} | ${w.oosSharpe.toFixed(2)} | ${w.isSortino.toFixed(2)} | ${w.oosSortino.toFixed(2)} | ${w.oosTrades} |`,
     );
   }
+
+  if (!sortinoCheck.passed) {
+    lines.push(``, `## Sortino-based robustness failures`, ``);
+    for (const r of sortinoCheck.reasons) lines.push(`- ${r}`);
+  }
+  if (!oldSharpeCheck.passed) {
+    lines.push(``, `## Sharpe-based robustness failures (reference)`, ``);
+    for (const r of oldSharpeCheck.reasons) lines.push(`- ${r}`);
+  }
+
   await fs.writeFile(reportPath, lines.join("\n"), "utf-8");
   console.log(`\nReport: ${reportPath}`);
 }

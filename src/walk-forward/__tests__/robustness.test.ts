@@ -13,11 +13,14 @@ function mkAgg(
   return {
     windows: [],
     oosAvgSharpe: 1.2,
+    oosAvgSortino: 1.5,
+    oosSortinoStdev: 0.5,
     oosAvgMar: 0.8,
     oosAvgPf: 1.5,
     oosMaxDd: 0.1,
     oosAvgTotalReturn: 0.15,
     isOosSharpeDrop: 0.2,
+    isOosSortinoDrop: 0.2,
     ...overrides,
   };
 }

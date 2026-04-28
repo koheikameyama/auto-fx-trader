@@ -9,6 +9,7 @@ import { evaluateExit, type PositionState } from "./exit-manager.js";
 import { pipsToJpy } from "../lib/pip-value.js";
 import {
   sharpeRatio,
+  sortinoRatio,
   maxDrawdown,
   profitFactor,
   expectancy,
@@ -37,6 +38,7 @@ export interface BacktestResult {
   equityCurve: EquityPoint[];
   totalReturn: number;
   sharpe: number;
+  sortino: number;
   mar: number;
   profitFactor: number;
   maxDrawdown: number;
@@ -109,6 +111,7 @@ export function runBacktest<P>(input: BacktestInput<P>): BacktestResult {
       equityCurve: [],
       totalReturn: 0,
       sharpe: 0,
+      sortino: 0,
       mar: 0,
       profitFactor: 0,
       maxDrawdown: 0,
@@ -289,6 +292,7 @@ export function runBacktest<P>(input: BacktestInput<P>): BacktestResult {
     }
   }
   const sharpe = sharpeRatio(returns);
+  const sortino = sortinoRatio(returns);
   const mdd = maxDrawdown(equityCurve.map((p) => p.equity));
 
   const firstDate = equityCurve[0]?.date ?? bars[0].date;
@@ -308,6 +312,7 @@ export function runBacktest<P>(input: BacktestInput<P>): BacktestResult {
     equityCurve,
     totalReturn,
     sharpe,
+    sortino,
     mar,
     profitFactor: pf,
     maxDrawdown: mdd,

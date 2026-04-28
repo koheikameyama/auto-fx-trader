@@ -20,6 +20,7 @@ import type { BacktestResult, EquityPoint } from "./engine.js";
 import { writeBacktestReport } from "../reports/markdown-writer.js";
 import {
   sharpeRatio,
+  sortinoRatio,
   maxDrawdown,
   profitFactor,
   expectancy,
@@ -131,7 +132,7 @@ function runCombinedBacktest(input: CombinedRunInput): BacktestResult {
   const dates = Array.from(dateSet).sort((a, b) => a - b);
   if (dates.length === 0) {
     return {
-      trades: [], equityCurve: [], totalReturn: 0, sharpe: 0, mar: 0,
+      trades: [], equityCurve: [], totalReturn: 0, sharpe: 0, sortino: 0, mar: 0,
       profitFactor: 0, maxDrawdown: 0, winRate: 0, expectancy: 0, tradeCount: 0,
     };
   }
@@ -296,6 +297,7 @@ function runCombinedBacktest(input: CombinedRunInput): BacktestResult {
     if (prev !== 0) returns.push((equityCurve[i].equity - prev) / prev);
   }
   const sharpe = sharpeRatio(returns);
+  const sortino = sortinoRatio(returns);
   const mdd = maxDrawdown(equityCurve.map((p) => p.equity));
   const firstDate = equityCurve[0]?.date ?? new Date(dates[0]);
   const lastDate = equityCurve[equityCurve.length - 1]?.date ?? new Date(dates[dates.length - 1]);
@@ -308,6 +310,7 @@ function runCombinedBacktest(input: CombinedRunInput): BacktestResult {
     equityCurve,
     totalReturn,
     sharpe,
+    sortino,
     mar,
     profitFactor: profitFactor(pnls),
     maxDrawdown: mdd,

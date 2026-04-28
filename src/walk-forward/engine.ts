@@ -26,6 +26,8 @@ export interface WfWindowResult<P> {
   bestParams: P;
   isSharpe: number;
   oosSharpe: number;
+  isSortino: number;
+  oosSortino: number;
   oosMar: number;
   oosPf: number;
   oosMaxDd: number;
@@ -36,11 +38,14 @@ export interface WfWindowResult<P> {
 export interface WfAggregate<P> {
   windows: WfWindowResult<P>[];
   oosAvgSharpe: number;
+  oosAvgSortino: number;
+  oosSortinoStdev: number;
   oosAvgMar: number;
   oosAvgPf: number;
   oosMaxDd: number;
   oosAvgTotalReturn: number;
   isOosSharpeDrop: number;
+  isOosSortinoDrop: number;
 }
 
 /**
@@ -106,6 +111,19 @@ export function runWalkForward<P extends Record<string, number>>(
       usdJpyRate,
     });
 
+    // Re-run on IS with the chosen best params to capture IS-side Sortino
+    // (the optimizer reports Sharpe only). This is one extra backtest per
+    // window — negligible vs. the full grid search above.
+    const isResult = runBacktest({
+      bars: isBars,
+      pair,
+      strategy,
+      params: opt.bestParams,
+      initialCapital,
+      riskRatio,
+      usdJpyRate,
+    });
+
     const oos = runBacktest({
       bars: oosBars,
       pair,
@@ -125,6 +143,8 @@ export function runWalkForward<P extends Record<string, number>>(
       bestParams: opt.bestParams,
       isSharpe: safeKpi(opt.bestSharpe),
       oosSharpe: safeKpi(oos.sharpe),
+      isSortino: safeKpi(isResult.sortino),
+      oosSortino: safeKpi(oos.sortino),
       oosMar: safeKpi(oos.mar),
       oosPf: safeKpi(oos.profitFactor),
       oosMaxDd: oos.maxDrawdown,
@@ -137,31 +157,48 @@ export function runWalkForward<P extends Record<string, number>>(
     return {
       windows: [],
       oosAvgSharpe: 0,
+      oosAvgSortino: 0,
+      oosSortinoStdev: 0,
       oosAvgMar: 0,
       oosAvgPf: 0,
       oosMaxDd: 0,
       oosAvgTotalReturn: 0,
       isOosSharpeDrop: 0,
+      isOosSortinoDrop: 0,
     };
   }
 
   const oosAvgSharpe = average(windows.map((w) => w.oosSharpe));
+  const oosAvgSortino = average(windows.map((w) => w.oosSortino));
   const oosAvgMar = average(windows.map((w) => w.oosMar));
   const oosAvgPf = average(windows.map((w) => w.oosPf));
   const oosMaxDd = Math.max(...windows.map((w) => w.oosMaxDd));
   const oosAvgTotalReturn = average(windows.map((w) => w.oosTotalReturn));
 
+  // OOS Sortino stdev across windows (variance stability indicator)
+  const sortinoVariance =
+    windows.reduce((s, w) => s + (w.oosSortino - oosAvgSortino) ** 2, 0) /
+    windows.length;
+  const oosSortinoStdev = Math.sqrt(sortinoVariance);
+
   const isAvgSharpe = average(windows.map((w) => w.isSharpe));
   const isOosSharpeDrop =
     isAvgSharpe > 0 ? (isAvgSharpe - oosAvgSharpe) / isAvgSharpe : 0;
 
+  const isAvgSortino = average(windows.map((w) => w.isSortino));
+  const isOosSortinoDrop =
+    isAvgSortino > 0 ? (isAvgSortino - oosAvgSortino) / isAvgSortino : 0;
+
   return {
     windows,
     oosAvgSharpe,
+    oosAvgSortino,
+    oosSortinoStdev,
     oosAvgMar,
     oosAvgPf,
     oosMaxDd,
     oosAvgTotalReturn,
     isOosSharpeDrop,
+    isOosSortinoDrop,
   };
 }
