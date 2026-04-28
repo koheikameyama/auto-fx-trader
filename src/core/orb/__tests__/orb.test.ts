@@ -9,7 +9,6 @@ function bar(iso: string, o: number, h: number, l: number, c: number): DailyBar 
 describe("orbStrategy.generateSignals", () => {
   const params = {
     rangeHours: 3,
-    atrMultStop: 1.5,
     atrPeriod: 14,
     sessionStartUtcHour: 7,
     sessionEndUtcHour: 15,
@@ -80,5 +79,35 @@ describe("orbStrategy.generateSignals", () => {
     bars.push(bar("2026-01-15T03:00:00Z", 150.0, 151.0, 149.0, 151.0));
     const sigs = orbStrategy.generateSignals(bars, "USDJPY", params);
     expect(sigs).toHaveLength(0);
+  });
+
+  it("resets per-day state between sessions (day B range not polluted by day A)", () => {
+    const bars: DailyBar[] = [];
+    // Priming bars on 2026-01-13 for ATR(14) warmup
+    for (let i = 0; i < 14; i++) {
+      bars.push(bar(`2026-01-13T${String(i).padStart(2, "0")}:00:00Z`, 150.0, 150.1, 149.9, 150.0));
+    }
+
+    // Day A: 2026-01-14 — high range (around 200-201)
+    bars.push(bar("2026-01-14T07:00:00Z", 200.0, 200.5, 199.9, 200.3));
+    bars.push(bar("2026-01-14T08:00:00Z", 200.3, 200.8, 200.1, 200.6));
+    bars.push(bar("2026-01-14T09:00:00Z", 200.6, 201.0, 200.4, 200.9));
+    // Breakout bar above day A range high (201.0)
+    bars.push(bar("2026-01-14T10:00:00Z", 200.9, 202.2, 200.8, 202.0));
+
+    // Day B: 2026-01-15 — back to normal range (around 150-151)
+    bars.push(bar("2026-01-15T07:00:00Z", 150.0, 150.5, 149.9, 150.3));
+    bars.push(bar("2026-01-15T08:00:00Z", 150.3, 150.8, 150.1, 150.6));
+    bars.push(bar("2026-01-15T09:00:00Z", 150.6, 151.0, 150.4, 150.9));
+    // Breakout above day B range high (151.0) but BELOW day A range high (201.0).
+    // If state didn't reset, this would not exceed rangeHigh=201 and no signal would fire.
+    bars.push(bar("2026-01-15T10:00:00Z", 150.9, 152.2, 150.8, 152.0));
+
+    const sigs = orbStrategy.generateSignals(bars, "USDJPY", params);
+    expect(sigs).toHaveLength(2);
+    expect(sigs[0].date.toISOString()).toBe("2026-01-14T10:00:00.000Z");
+    expect(sigs[0].side).toBe("long");
+    expect(sigs[1].date.toISOString()).toBe("2026-01-15T10:00:00.000Z");
+    expect(sigs[1].side).toBe("long");
   });
 });
