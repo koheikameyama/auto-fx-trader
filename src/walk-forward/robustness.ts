@@ -158,20 +158,22 @@ export function checkSortinoRobustness<P>(
  * per-pair aggregates satisfy all robustness criteria.
  */
 export function checkCrossPairRobustness<P>(
-  perPair: Record<PairSymbol, WfAggregate<P>>,
+  perPair: Partial<Record<PairSymbol, WfAggregate<P>>>,
   criteria: RobustnessCriteria = defaultRobustness,
   minPassingPairs = 2,
 ): {
   passed: boolean;
   passingPairs: PairSymbol[];
-  details: Record<PairSymbol, RobustnessCheck>;
+  details: Partial<Record<PairSymbol, RobustnessCheck>>;
 } {
-  const details = {} as Record<PairSymbol, RobustnessCheck>;
+  const details: Partial<Record<PairSymbol, RobustnessCheck>> = {};
   const passingPairs: PairSymbol[] = [];
   const pairs = Object.keys(perPair) as PairSymbol[];
 
   for (const pair of pairs) {
-    const check = checkRobustness(perPair[pair], criteria);
+    const agg = perPair[pair];
+    if (!agg) continue;
+    const check = checkRobustness(agg, criteria);
     details[pair] = check;
     if (check.passed) {
       passingPairs.push(pair);

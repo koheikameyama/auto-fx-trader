@@ -93,7 +93,7 @@ describe("checkRobustness", () => {
 
 describe("checkCrossPairRobustness", () => {
   it("passes when 2 of 3 pairs pass (default minPassingPairs=2)", () => {
-    const perPair: Record<PairSymbol, WfAggregate<Record<string, number>>> = {
+    const perPair: Partial<Record<PairSymbol, WfAggregate<Record<string, number>>>> = {
       USDJPY: mkAgg(), // pass
       EURUSD: mkAgg(), // pass
       GBPUSD: mkAgg({ oosAvgSharpe: 0.3 }), // fail
@@ -101,12 +101,12 @@ describe("checkCrossPairRobustness", () => {
     const r = checkCrossPairRobustness(perPair);
     expect(r.passed).toBe(true);
     expect(r.passingPairs.sort()).toEqual(["EURUSD", "USDJPY"]);
-    expect(r.details.USDJPY.passed).toBe(true);
-    expect(r.details.GBPUSD.passed).toBe(false);
+    expect(r.details.USDJPY!.passed).toBe(true);
+    expect(r.details.GBPUSD!.passed).toBe(false);
   });
 
   it("fails when only 1 of 3 pairs passes", () => {
-    const perPair: Record<PairSymbol, WfAggregate<Record<string, number>>> = {
+    const perPair: Partial<Record<PairSymbol, WfAggregate<Record<string, number>>>> = {
       USDJPY: mkAgg(), // pass
       EURUSD: mkAgg({ oosAvgSharpe: 0.3 }), // fail
       GBPUSD: mkAgg({ oosMaxDd: 0.5 }), // fail
@@ -117,7 +117,7 @@ describe("checkCrossPairRobustness", () => {
   });
 
   it("fails when 0 of 3 pairs pass", () => {
-    const perPair: Record<PairSymbol, WfAggregate<Record<string, number>>> = {
+    const perPair: Partial<Record<PairSymbol, WfAggregate<Record<string, number>>>> = {
       USDJPY: mkAgg({ oosAvgSharpe: 0.3 }),
       EURUSD: mkAgg({ oosAvgSharpe: 0.3 }),
       GBPUSD: mkAgg({ oosAvgSharpe: 0.3 }),
@@ -128,7 +128,7 @@ describe("checkCrossPairRobustness", () => {
   });
 
   it("passes when all 3 pairs pass", () => {
-    const perPair: Record<PairSymbol, WfAggregate<Record<string, number>>> = {
+    const perPair: Partial<Record<PairSymbol, WfAggregate<Record<string, number>>>> = {
       USDJPY: mkAgg(),
       EURUSD: mkAgg(),
       GBPUSD: mkAgg(),
@@ -139,7 +139,7 @@ describe("checkCrossPairRobustness", () => {
   });
 
   it("respects custom minPassingPairs", () => {
-    const perPair: Record<PairSymbol, WfAggregate<Record<string, number>>> = {
+    const perPair: Partial<Record<PairSymbol, WfAggregate<Record<string, number>>>> = {
       USDJPY: mkAgg(),
       EURUSD: mkAgg(),
       GBPUSD: mkAgg({ oosAvgSharpe: 0.3 }),

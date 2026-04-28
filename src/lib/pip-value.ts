@@ -6,7 +6,7 @@ export function pipsToJpy(
   units: number,
   usdJpyRate: number,
 ): number {
-  if (pair === "USDJPY") {
+  if (pair === "USDJPY" || pair === "EURJPY") {
     return pips * 0.01 * units;
   }
   return pips * 0.0001 * units * usdJpyRate;

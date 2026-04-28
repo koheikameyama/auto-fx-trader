@@ -1,1 +1,1 @@
-export type PairSymbol = "USDJPY" | "EURUSD" | "GBPUSD";
+export type PairSymbol = "USDJPY" | "EURUSD" | "GBPUSD" | "EURJPY";

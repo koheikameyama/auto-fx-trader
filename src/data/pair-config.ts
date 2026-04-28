@@ -36,6 +36,14 @@ const CONFIGS: Record<PairSymbol, PairConfig> = {
     sellSwapJpy: 10,
     pipDecimals: 4,
   },
+  EURJPY: {
+    symbol: "EURJPY",
+    yfinanceTicker: "EURJPY=X",
+    spreadPips: 0.5,
+    buySwapJpy: 50,
+    sellSwapJpy: -80,
+    pipDecimals: 2,
+  },
 };
 
 export function getPairConfig(pair: PairSymbol): PairConfig {
