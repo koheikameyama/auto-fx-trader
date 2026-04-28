@@ -26,7 +26,7 @@
 - 戦略: Donchian, MA Crossover, RSI Mean Reversion, NR7 Breakout
 
 ### 現状（2026-04-28 検証時点）
-日足12組合せ・4h MA Crossover 最小実験は全 FAIL。1h London ORB 追加実験では**7KPI中6KPI合格 / Sharpe絶対値のみ未達（PARTIAL_SHARPE）**。Option B（ストップ拡大 1.5×→2.5×ATR）の追試も Sharpe 改善せず → **「探索済み・未採用」として凍結**。詳細は [docs/specs/orb-1h-experiment-result.md](docs/specs/orb-1h-experiment-result.md) と [docs/specs/research-findings.md](docs/specs/research-findings.md)。
+日足12組合せ・4h MA Crossover 最小実験は全 FAIL。1h London ORB 追加実験では**7KPI中6KPI合格 / Sharpe絶対値のみ未達（PARTIAL_SHARPE）**。Option B（ストップ拡大 1.5×→2.5×ATR）追試 → Sharpe 改善せず。KPI再設計（主KPI を Sortino比 ≥ 0.7 に変更）→ 実測 0.459 で再び未達 → **「探索済み・未採用」として凍結最終確定**。詳細は [docs/specs/orb-1h-experiment-result.md](docs/specs/orb-1h-experiment-result.md) と [docs/specs/research-findings.md](docs/specs/research-findings.md)。
 
 ## 設計ドキュメント
 
