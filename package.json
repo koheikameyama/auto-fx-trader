@@ -9,6 +9,7 @@
   },
   "scripts": {
     "backfill:prices": "tsx scripts/backfill-fx-prices.ts",
+    "backfill:usdjpy-1h": "tsx scripts/backfill-usdjpy-1h.ts",
     "backtest:donchian": "tsx src/backtest/donchian-run.ts",
     "backtest:ma-crossover": "tsx src/backtest/ma-crossover-run.ts",
     "backtest:rsi-reversion": "tsx src/backtest/rsi-reversion-run.ts",
