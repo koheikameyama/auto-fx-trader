@@ -2,7 +2,7 @@ import type { DailyBar } from "../types/bar.js";
 import type { PairSymbol } from "../types/pair.js";
 import type { ExitConfig } from "../types/strategy.js";
 
-export type ExitOutcome = "sl" | "trailing" | "time" | "none";
+export type ExitOutcome = "sl" | "trailing" | "time" | "session-end" | "none";
 
 export interface PositionState {
   pair: PairSymbol;
@@ -36,7 +36,8 @@ export interface EvaluateResult {
  *   2. SL touch check (long: bar.low <= currentSl; short: bar.high >= currentSl) — exit at currentSl price
  *   3. If not exited and !hasBreakEven: BE promotion check — move SL to entryPrice if highSinceEntry ≥ entry + ATR×beMul (long) / lowSinceEntry ≤ entry - ATR×beMul (short)
  *   4. If not exited and useTrailing: trailing SL update — long: newSl = highSinceEntry - ATR×trailMul (only raise, never lower); short: newSl = lowSinceEntry + ATR×trailMul (only lower, never raise)
- *   5. Time stop check — if daysHeld >= timeStopDays, exit at bar.close
+ *   5. Session-end check — if cfg.sessionEndUtcHour is set and bar.date.getUTCHours() >= cutoff, exit at bar.close (intraday strategies)
+ *   6. Time stop check — if daysHeld >= timeStopDays, exit at bar.close
  *
  * IMPORTANT: BE/trail promotion uses the *updated* highSinceEntry/lowSinceEntry for this bar.
  * SL touch uses the OLD currentSl (so a trail updated on the same bar does NOT retroactively cause exit).
@@ -100,7 +101,19 @@ export function evaluateExit(
     }
   }
 
-  // 5. Time stop
+  // 5. Session-end exit (intraday strategies) — force-close when bar UTC hour reaches the cutoff
+  if (cfg.sessionEndUtcHour != null && bar.date.getUTCHours() >= cfg.sessionEndUtcHour) {
+    return {
+      newState: { ...state, highSinceEntry, lowSinceEntry, currentSl, hasBreakEven },
+      exit: {
+        exited: true,
+        exitPrice: bar.close,
+        exitReason: "session-end",
+      },
+    };
+  }
+
+  // 6. Time stop
   if (daysHeld >= cfg.timeStopDays) {
     return {
       newState: { ...state, highSinceEntry, lowSinceEntry, currentSl, hasBreakEven },
