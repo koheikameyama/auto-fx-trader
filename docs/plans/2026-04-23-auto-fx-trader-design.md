@@ -520,8 +520,13 @@ export interface ExitConfig {
 
 以下はMVPに含めないが、設計の邪魔にならないように構造を準備する:
 
-- **ペーパートレード**: デモ口座で戦略を検証する仕組み（OANDA demo等）
-- **実取引**: `broker/` レイヤー追加（OANDA / MT5 / SBI等）
+- ~~**ペーパートレード**: デモ口座で戦略を検証する仕組み（OANDA demo等）~~
+  → **実装済み**（KOH-642）。`src/broker/`, `src/demo/`。Donchian/USDJPY を
+  OANDA practice 口座で観察する基盤。DB を使わず OANDA + Slack を真実の
+  源泉とする。詳細は CLAUDE.md「ブローカー」節参照。凍結済み戦略の観察が
+  目的で、本番採用（live 口座）は引き続きスコープ外
+- **実取引**: live 口座への接続は本タスクでも対象外のまま。将来的に必要なら
+  `OandaClient` の practice 限定ガードを外す判断が別途必要
 - **Web UI**: Hono で戦略・バックテスト結果のダッシュボード
 - **短期足（1H/4H）への展開**: データモデルは日足のみだが、将来 `IntradayBar` を追加可能
 - **追加戦略**: Bollinger / Inside Bar / Momentum / Carry等

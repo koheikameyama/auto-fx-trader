@@ -75,6 +75,29 @@
 - `prisma db push` や `prisma migrate resolve --applied` は使用禁止（グローバルルール）
 - Float で Infinity を保存する場合は `safeKpi` でクランプ（±999）
 
+### ブローカー（`src/broker/`, `src/demo/`）— OANDA デモトレード（KOH-642）
+
+凍結済み戦略（Donchian/USDJPY）を OANDA practice 口座で観察するための実行基盤。
+**戦略の採用判断ではない**。詳細は PR #（KOH-642）参照。
+
+- **practice 環境限定**: `OandaClient` はコンストラクタで `baseUrl` に
+  `fxpractice` を含まない値を渡すと throw する。live 口座は対象外
+- **DB を使わない**: OANDA を真実の源泉とする。GHA から `DATABASE_URL`
+  （`localhost` 固定）に到達できないための設計判断。トレードログは Slack
+  （`SLACK_WEBHOOK_URL`）が担う
+- **状態は保存せず replay する**: `highSinceEntry` / `hasBreakEven` / `currentSl`
+  は `tradeClientExtensions` に書き込まない。エントリ時の不変値
+  （`entryAtr`, 理論エントリ価格, シグナル足日付）のみを
+  `id`/`comment` に埋め込み、毎回そこから `evaluateExit`（`src/backtest/exit-manager.ts`）
+  で再計算する（`src/broker/trade-state.ts`）。失敗した実行から自己修復できる
+- **約定ずれは記録するだけ**: バックテストはシグナル足の終値で約定するが、
+  実運用は確定後にしか発注できずずれる。理論価格と実約定価格の差を
+  Slack に出力して観測する（是正しない）
+- **OANDA 側の一方的決済を検出する**: `stopLossOnFill` により実行の合間に
+  決済されうる。毎回 `getRecentlyClosedTrades` で直近24hのクローズを確認し
+  Slack に通知する（見落とすとトレードログから消える）
+- kill switch: `.demo-trading-stop`（GHA では**コミットしないと効かない**）
+
 ### テスト
 
 - TDD推奨（test first）

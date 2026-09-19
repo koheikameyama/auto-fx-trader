@@ -1,0 +1,43 @@
+name: Demo Trading Daily Cycle (OANDA / Donchian / USDJPY)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Evaluate only, do not place/modify/close orders"
+        type: boolean
+        default: false
+
+# Prevents two overlapping runs from both acting on the same signal bar
+# (see KOH-642 plan §冪等性 — the tradeClientExtensions id also guards this,
+# but this is a cheaper first line of defense).
+concurrency:
+  group: demo-trading-donchian
+  cancel-in-progress: false
+
+jobs:
+  demo-trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # This runner does not use a database — OANDA is the source of truth
+      # (see KOH-642 plan). DATABASE_URL is only present because `postinstall`
+      # runs `prisma generate`, which reads the schema but never connects.
+      DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+      OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+      OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run demo trading cycle
+        run: npm run demo:donchian -- ${{ inputs.dry_run && '--dry-run' || '' }}
